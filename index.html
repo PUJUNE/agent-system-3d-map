@@ -5784,6 +5784,7 @@ const absPos      = new Map();      // 매 틱 계산한 절대 좌표
 const dragging    = new Set();      // 현재 드래그 중인 노드 id
 let orbitPaused = false;            // 공전 일시정지 여부
 let pauseStart  = 0;
+let lastSpinT   = performance.now(); // 자동 회전용 프레임 시각
 let rootCenter  = { x:0, y:0, z:0 };
 
 function markResettle(){ orbitMode = false; settleStart = performance.now(); }
@@ -5885,8 +5886,23 @@ function orbitTick(){
 }
 
 Graph.onEngineTick(() => {
+  // 카메라 자동 회전 (TrackballControls 는 autoRotate 를 지원하지 않아 직접 구현)
+  const nowT = performance.now();
+  if (spinning){
+    let dt = (nowT - lastSpinT) / 1000;
+    if (dt > 0.1) dt = 0.1;                       // 탭 비활성 등으로 인한 급점프 방지
+    const cam = Graph.camera();
+    const tg  = (controls && controls.target) ? controls.target : { x:0, y:0, z:0 };
+    const dx = cam.position.x - tg.x, dz = cam.position.z - tg.z;
+    const ang = 0.06 * dt, cs = Math.cos(ang), sn = Math.sin(ang);
+    cam.position.x = tg.x + dx*cs - dz*sn;
+    cam.position.z = tg.z + dx*sn + dz*cs;
+    cam.lookAt(tg.x, tg.y, tg.z);
+  }
+  lastSpinT = nowT;
+
   if (!orbitMode){
-    if (performance.now() - settleStart > SETTLE_MS) startOrbit();
+    if (nowT - settleStart > SETTLE_MS) startOrbit();
     return;
   }
   if (orbitPaused) return;   // 공전 정지 시 좌표를 갱신하지 않아 제자리에 멈춘다
