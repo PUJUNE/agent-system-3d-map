@@ -5766,6 +5766,215 @@ const Graph = ForceGraph3D({ rendererConfig:{ antialias:true, alpha:true, powerP
 Graph.graphData(buildData());
 Graph.d3Force('charge').strength(-95);
 
+// ───────── 부모 주위 공전(궤도) 모션 + 점선 엣지 ─────────
+// tickFrame 은 engineRunning 일 때만 노드/링크 위치를 갱신하므로,
+// 엔진을 상시 가동해(cooldownTime=Infinity) 매 프레임 좌표를 직접 제어한다.
+Graph.enableNodeDrag(false);
+Graph.cooldownTime(Infinity);
+
+const SETTLE_MS = 3200;              // 초기 힘-기반 배치가 자리잡는 시간
+let settleStart = performance.now();
+let orbitMode   = false;
+let orbitStart  = 0;
+let bfsOrder    = [];                // 부모 → 자식 계산 순서
+let orbitById   = {};               // id → 노드 객체
+const orbitParams = new Map();      // id → {pid, r, u, v, omega, phase}
+const absPos      = new Map();      // 매 틱 계산한 절대 좌표
+let rootCenter  = { x:0, y:0, z:0 };
+
+function markResettle(){ orbitMode = false; settleStart = performance.now(); }
+
+function hashUnit(str){
+  let h = 2166136261;
+  for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h,16777619); }
+  const a = ((h>>>0)%1000)/1000;
+  const b = ((Math.imul(h,48271)>>>0)%1000)/1000;
+  const c = ((Math.imul(h,69621)>>>0)%1000)/1000;
+  return { a, b, c };
+}
+
+function startOrbit(){
+  const data = Graph.graphData();
+  const byId = {};
+  data.nodes.forEach(n => byId[n.id] = n);
+  const parentOf = {};
+  data.links.forEach(l => {
+    const s = (l.source && typeof l.source==='object') ? l.source.id : l.source;
+    const t = (l.target && typeof l.target==='object') ? l.target.id : l.target;
+    parentOf[t] = s;
+  });
+
+  const root = data.nodes.find(n => parentOf[n.id]==null) || data.nodes[0];
+  rootCenter = { x:root.x||0, y:root.y||0, z:root.z||0 };
+
+  orbitParams.clear();
+  data.nodes.forEach(n => {
+    const pid = parentOf[n.id];
+    if (pid==null) return;                 // 루트(중심 별)
+    const p = byId[pid]; if (!p) return;
+    let dx=(n.x||0)-(p.x||0), dy=(n.y||0)-(p.y||0), dz=(n.z||0)-(p.z||0);
+    let r = Math.hypot(dx,dy,dz);
+    if (r < 1e-3){ r = 8; dx = 8; dy = 0; dz = 0; }
+    const ux=dx/r, uy=dy/r, uz=dz/r;
+    // 궤도면 법선 = u × (해시 기반 임의 벡터) → 궤도마다 다른 기울기
+    const hsh = hashUnit(n.id);
+    const hx=hsh.a*2-1, hy=hsh.b*2-1, hz=hsh.c*2-1;
+    let nx=uy*hz-uz*hy, ny=uz*hx-ux*hz, nz=ux*hy-uy*hx;
+    let nl = Math.hypot(nx,ny,nz);
+    if (nl < 1e-3){ nx=uy; ny=-ux; nz=0; nl = Math.hypot(nx,ny,nz)||1; }
+    nx/=nl; ny/=nl; nz/=nl;
+    // v = normal × u  → (u,v) 는 궤도면의 직교 단위 기저
+    const vx=ny*uz-nz*uy, vy=nz*ux-nx*uz, vz=nx*uy-ny*ux;
+    // 각속도: 반지름이 클수록 느리게(케플러 느낌) + 노드별 편차·회전방향
+    const dir = hsh.c > 0.5 ? 1 : -1;
+    let omega = dir * 0.42 / Math.sqrt(r) * (0.8 + 0.4*hsh.a);
+    const mag = Math.min(Math.max(Math.abs(omega), 0.02), 0.13);
+    omega = (omega<0 ? -mag : mag);
+    orbitParams.set(n.id, { pid, r, u:{x:ux,y:uy,z:uz}, v:{x:vx,y:vy,z:vz}, omega, phase:0 });
+  });
+
+  // 부모가 먼저 계산되도록 BFS 순서 구성
+  const children = {};
+  Object.keys(parentOf).forEach(cid => {
+    const pid = parentOf[cid];
+    (children[pid] || (children[pid]=[])).push(cid);
+  });
+  bfsOrder = [];
+  const seen = new Set([root.id]);
+  const q = [root.id];
+  while (q.length){
+    const id = q.shift(); bfsOrder.push(id);
+    (children[id]||[]).forEach(cid => { if (!seen.has(cid)){ seen.add(cid); q.push(cid); } });
+  }
+  data.nodes.forEach(n => { if (!seen.has(n.id)){ seen.add(n.id); bfsOrder.push(n.id); } });
+
+  orbitById  = byId;
+  orbitStart = performance.now();
+  orbitMode  = true;
+}
+
+function orbitTick(){
+  const t = (performance.now() - orbitStart) / 1000;
+  absPos.clear();
+  for (const id of bfsOrder){
+    const n = orbitById[id]; if (!n) continue;
+    const p = orbitParams.get(id);
+    if (!p){                                // 루트 = 중심 고정
+      n.fx=rootCenter.x; n.fy=rootCenter.y; n.fz=rootCenter.z;
+      n.x =rootCenter.x; n.y =rootCenter.y; n.z =rootCenter.z;
+      absPos.set(id, rootCenter);
+      continue;
+    }
+    const pa = absPos.get(p.pid) || rootCenter;
+    const th = p.phase + p.omega * t;
+    const c = Math.cos(th), s = Math.sin(th);
+    const x = pa.x + p.r*(c*p.u.x + s*p.v.x);
+    const y = pa.y + p.r*(c*p.u.y + s*p.v.y);
+    const z = pa.z + p.r*(c*p.u.z + s*p.v.z);
+    n.fx=x; n.fy=y; n.fz=z; n.x=x; n.y=y; n.z=z;
+    absPos.set(id, { x, y, z });
+  }
+}
+
+Graph.onEngineTick(() => {
+  if (!orbitMode){
+    if (performance.now() - settleStart > SETTLE_MS) startOrbit();
+    return;
+  }
+  orbitTick();
+});
+
+// ── 점선 엣지 : 번들 내부 THREE 는 비공개이므로 기본 실선에서 클래스를 확보 ──
+const DASH = 4.5, GAP = 5.0, MAXDASH = 44;
+let THREE_CLS = null;
+
+function harvestThree(){
+  if (THREE_CLS) return true;
+  let Line, Geom, Attr, Basic;
+  Graph.scene().traverse(o => {
+    if (!Line && o.isLine && o.geometry && o.material){
+      Line = o.constructor;
+      Geom = o.geometry.constructor;
+      const pa = o.geometry.getAttribute('position');
+      if (pa) Attr = pa.constructor;
+      const m = Array.isArray(o.material) ? o.material[0] : o.material;
+      Basic = m.constructor;
+    }
+  });
+  if (!Line || !Geom || !Attr || !Basic) return false;
+  const Obj3D = Object.getPrototypeOf(Line.prototype).constructor;   // Line → Object3D
+  THREE_CLS = { Line, Geom, Attr, Basic, Obj3D };
+  return true;
+}
+
+function linkAlpha(css){
+  const m = /rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(?:,\s*([\d.]+))?\)/.exec(css||'');
+  return (m && m[1]!==undefined) ? parseFloat(m[1]) : 0.5;
+}
+
+function makeDash(grp){
+  const { Line, Geom, Attr, Basic } = THREE_CLS;
+  const g = new Geom();
+  g.setAttribute('position', new Attr(new Float32Array(6), 3));
+  const m = new Basic({ transparent:true, opacity:grp.__op, depthWrite:false });
+  try { m.color.set(grp.__col); } catch(e){}
+  const line = new Line(g, m);
+  line.frustumCulled = false;
+  line.visible = false;
+  grp.add(line);
+  grp.__dashes.push(line);
+  return line;
+}
+
+function dashObject(link){
+  if (!harvestThree()) return false;      // 확보 전이면 기본 실선 사용
+  const grp = new THREE_CLS.Obj3D();
+  grp.__dashes = [];
+  grp.__col = link.color || 'rgba(255,255,255,.4)';
+  grp.__op  = Math.min(1, linkAlpha(link.color) + 0.15);
+  return grp;
+}
+
+function dashUpdate(grp, { start, end }){
+  if (!grp || !grp.__dashes) return false;
+  const sx=start.x, sy=start.y, sz=start.z;
+  const dx=end.x-sx, dy=end.y-sy, dz=end.z-sz;
+  const len = Math.hypot(dx,dy,dz) || 1e-6;
+  const period = DASH + GAP;
+  let count = Math.floor((len + GAP) / period);
+  if (count < 1) count = 1;
+  if (count > MAXDASH) count = MAXDASH;
+  while (grp.__dashes.length < count) makeDash(grp);
+  const dashes = grp.__dashes;
+  for (let i=0;i<dashes.length;i++){
+    const line = dashes[i];
+    if (i >= count){ if (line.visible) line.visible=false; continue; }
+    let a = (i*period)/len;
+    let b = (i*period + DASH)/len;
+    if (a>1) a=1; if (b>1) b=1;
+    const pa = line.geometry.getAttribute('position'), arr = pa.array;
+    arr[0]=sx+dx*a; arr[1]=sy+dy*a; arr[2]=sz+dz*a;
+    arr[3]=sx+dx*b; arr[4]=sy+dy*b; arr[5]=sz+dz*b;
+    pa.needsUpdate = true;
+    line.visible = true;
+  }
+  return true;                            // 기본 실선 배치를 건너뛴다
+}
+
+function applyDashedLinks(){
+  if (!harvestThree()) return false;
+  Graph.linkThreeObjectExtend(false)
+       .linkThreeObject(dashObject)
+       .linkPositionUpdate(dashUpdate);
+  return true;
+}
+// 기본 실선이 생성돼 클래스를 확보할 수 있을 때까지 기다렸다가 점선으로 교체
+(function waitAndApply(){
+  if (!applyDashedLinks()) requestAnimationFrame(waitAndApply);
+})();
+
+Graph.d3ReheatSimulation();             // 엔진 상시 가동 보장
+
 // 고해상도 렌더링 — 디스플레이 배율 이상으로 픽셀 밀도 상향 (상한 3)
 Graph.renderer().setPixelRatio(Math.min(Math.max(window.devicePixelRatio||1, 2), 3));
 
@@ -5798,6 +6007,8 @@ if (window.matchMedia('(max-width:760px)').matches) hudEl.classList.add('collaps
 ['fSkill','fAxis','fWorkOnly'].forEach(id=>{
   document.getElementById(id).addEventListener('change', ()=>{
     Graph.graphData(buildData());
+    markResettle();               // 새 배치가 자리잡은 뒤 다시 공전 시작
+    Graph.d3ReheatSimulation();
   });
 });
 
