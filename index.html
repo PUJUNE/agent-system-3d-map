@@ -5769,7 +5769,7 @@ Graph.d3Force('charge').strength(-95);
 // ───────── 부모 주위 공전(궤도) 모션 + 점선 엣지 ─────────
 // tickFrame 은 engineRunning 일 때만 노드/링크 위치를 갱신하므로,
 // 엔진을 상시 가동해(cooldownTime=Infinity) 매 프레임 좌표를 직접 제어한다.
-Graph.enableNodeDrag(false);
+Graph.enableNodeDrag(true);         // 클릭·터치 드래그로 노드 이동 허용
 Graph.cooldownTime(Infinity);
 
 const SETTLE_MS = 3200;              // 초기 힘-기반 배치가 자리잡는 시간
@@ -5780,6 +5780,7 @@ let bfsOrder    = [];                // 부모 → 자식 계산 순서
 let orbitById   = {};               // id → 노드 객체
 const orbitParams = new Map();      // id → {pid, r, u, v, omega, phase}
 const absPos      = new Map();      // 매 틱 계산한 절대 좌표
+const dragging    = new Set();      // 현재 드래그 중인 노드 id
 let rootCenter  = { x:0, y:0, z:0 };
 
 function markResettle(){ orbitMode = false; settleStart = performance.now(); }
@@ -5858,6 +5859,10 @@ function orbitTick(){
   absPos.clear();
   for (const id of bfsOrder){
     const n = orbitById[id]; if (!n) continue;
+    if (dragging.has(id)){                  // 드래그 중인 노드는 사용자 위치 유지
+      absPos.set(id, { x:n.x, y:n.y, z:n.z });   // 자식은 이 위치를 기준으로 공전
+      continue;
+    }
     const p = orbitParams.get(id);
     if (!p){                                // 루트 = 중심 고정
       n.fx=rootCenter.x; n.fy=rootCenter.y; n.fz=rootCenter.z;
@@ -5883,6 +5888,30 @@ Graph.onEngineTick(() => {
   }
   orbitTick();
 });
+
+// 드래그한 위치에서 부모 기준 궤도 파라미터를 다시 잡아 자연스럽게 공전 재개
+function recomputeOrbit(n){
+  const p = orbitParams.get(n.id);
+  const parent = p ? orbitById[p.pid] : null;
+  if (!p || !parent) return;
+  let dx=n.x-parent.x, dy=n.y-parent.y, dz=n.z-parent.z;
+  let r = Math.hypot(dx,dy,dz);
+  if (r < 1e-3){ r = 8; dx = 8; dy = 0; dz = 0; }
+  const ux=dx/r, uy=dy/r, uz=dz/r;
+  const hsh = hashUnit(n.id);
+  const hx=hsh.a*2-1, hy=hsh.b*2-1, hz=hsh.c*2-1;
+  let nx=uy*hz-uz*hy, ny=uz*hx-ux*hz, nz=ux*hy-uy*hx;
+  let nl = Math.hypot(nx,ny,nz);
+  if (nl < 1e-3){ nx=uy; ny=-ux; nz=0; nl = Math.hypot(nx,ny,nz)||1; }
+  nx/=nl; ny/=nl; nz/=nl;
+  const vx=ny*uz-nz*uy, vy=nz*ux-nx*uz, vz=nx*uy-ny*ux;
+  const tNow = (performance.now() - orbitStart) / 1000;
+  p.r = r; p.u = {x:ux,y:uy,z:uz}; p.v = {x:vx,y:vy,z:vz};
+  p.phase = -p.omega * tNow;             // 현재(드롭) 위치에서 각도 0 → 이어서 공전
+}
+
+Graph.onNodeDrag(n => { dragging.add(n.id); });
+Graph.onNodeDragEnd(n => { dragging.delete(n.id); recomputeOrbit(n); });
 
 // ── 점선 엣지 : 번들 내부 THREE 는 비공개이므로 기본 실선에서 클래스를 확보 ──
 // linkWidth>0 이면 링크가 실린더 Mesh 로 생성되므로, Line 객체를 얻기 위해 0 으로 둔다.
