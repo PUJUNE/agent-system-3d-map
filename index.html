@@ -35,6 +35,16 @@
   .btnrow button:hover { background:rgba(255,255,255,.16); }
   #hint { font-size:10.5px; color:#7d8598; margin-top:10px; line-height:1.5; }
 
+  .hud-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  #hud h1 { margin-bottom:0; }
+  .hud-toggle { flex:none; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15);
+    color:#e6e9f0; width:28px; height:28px; border-radius:8px; cursor:pointer;
+    font-size:13px; line-height:1; transition:transform .2s; }
+  .hud-toggle:hover { background:rgba(255,255,255,.18); }
+  #hud.collapsed .hud-toggle { transform:rotate(-90deg); }
+  .hud-body { margin-top:10px; }
+  #hud.collapsed .hud-body { display:none; }
+
   #panel { top:16px; right:16px; bottom:16px; width:400px; max-width:calc(100vw - 32px);
     background:rgba(10,14,26,.92); border:1px solid rgba(255,255,255,.12);
     border-radius:12px; padding:20px; overflow-y:auto; display:none;
@@ -78,7 +88,11 @@
 <div id="graph"></div>
 
 <div id="hud" class="overlay">
-  <h1>에이전트 시스템 3D 지도</h1>
+  <div class="hud-head">
+    <h1>에이전트 시스템 3D 지도</h1>
+    <button id="hudToggle" class="hud-toggle" aria-label="지도 정보 접기·펴기" title="접기·펴기">▾</button>
+  </div>
+  <div class="hud-body">
   <div class="sub">에이전트별 기억·위키 구조와 회사 업무 스킬 현황 (2026-07-10 기준)</div>
   <div class="stats">
     <span class="stat"><b>7</b>활성 에이전트</span>
@@ -106,6 +120,7 @@
     <button id="btnSpin">자동 회전 끄기</button>
   </div>
   <div id="hint">드래그 회전 · 휠 줌 · 노드 클릭 시 상세 정보와 카메라 이동</div>
+  </div>
 </div>
 
 <div id="panel" class="overlay">
@@ -5772,6 +5787,13 @@ document.getElementById('graph').addEventListener('pointerdown', ()=>{
 document.getElementById('btnReset').addEventListener('click', ()=>{
   Graph.cameraPosition({x:0,y:0,z:560},{x:0,y:0,z:0},900);
 });
+
+const hudEl = document.getElementById('hud');
+document.getElementById('hudToggle').addEventListener('click', ()=>{
+  hudEl.classList.toggle('collapsed');
+});
+// 모바일 화면에서는 지도 정보를 기본 접힘 상태로 시작
+if (window.matchMedia('(max-width:760px)').matches) hudEl.classList.add('collapsed');
 
 ['fSkill','fAxis','fWorkOnly'].forEach(id=>{
   document.getElementById(id).addEventListener('change', ()=>{
