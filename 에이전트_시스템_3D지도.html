@@ -118,6 +118,7 @@
   <div class="btnrow">
     <button id="btnReset">시점 초기화</button>
     <button id="btnSpin">자동 회전 끄기</button>
+    <button id="btnOrbit">공전 끄기</button>
   </div>
   <div id="hint">드래그 회전 · 휠 줌 · 노드 클릭 시 상세 정보와 카메라 이동</div>
   </div>
@@ -5781,6 +5782,8 @@ let orbitById   = {};               // id → 노드 객체
 const orbitParams = new Map();      // id → {pid, r, u, v, omega, phase}
 const absPos      = new Map();      // 매 틱 계산한 절대 좌표
 const dragging    = new Set();      // 현재 드래그 중인 노드 id
+let orbitPaused = false;            // 공전 일시정지 여부
+let pauseStart  = 0;
 let rootCenter  = { x:0, y:0, z:0 };
 
 function markResettle(){ orbitMode = false; settleStart = performance.now(); }
@@ -5886,6 +5889,7 @@ Graph.onEngineTick(() => {
     if (performance.now() - settleStart > SETTLE_MS) startOrbit();
     return;
   }
+  if (orbitPaused) return;   // 공전 정지 시 좌표를 갱신하지 않아 제자리에 멈춘다
   orbitTick();
 });
 
@@ -6021,6 +6025,15 @@ document.getElementById('btnSpin').addEventListener('click', e=>{
 document.getElementById('graph').addEventListener('pointerdown', ()=>{
   if (spinning){ spinning=false; controls.autoRotate=false;
     document.getElementById('btnSpin').textContent='자동 회전 켜기'; }
+});
+document.getElementById('btnOrbit').addEventListener('click', e=>{
+  orbitPaused = !orbitPaused;
+  if (orbitPaused){
+    pauseStart = performance.now();               // 정지 시각 기록
+  } else if (orbitMode){
+    orbitStart += performance.now() - pauseStart; // 멈춘 만큼 시간축을 밀어 이어서 공전
+  }
+  e.target.textContent = orbitPaused ? '공전 켜기' : '공전 끄기';
 });
 
 document.getElementById('btnReset').addEventListener('click', ()=>{
