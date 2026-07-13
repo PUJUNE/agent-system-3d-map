@@ -5767,6 +5767,12 @@ const Graph = ForceGraph3D({ rendererConfig:{ antialias:true, alpha:true, powerP
 Graph.graphData(buildData());
 Graph.d3Force('charge').strength(-95);
 
+// 창 크기가 바뀌면 캔버스도 화면 전체로 맞춘다 (없으면 초기 크기에 고정돼 한켠에만 보임)
+Graph.width(window.innerWidth).height(window.innerHeight);
+window.addEventListener('resize', ()=>{
+  Graph.width(window.innerWidth).height(window.innerHeight);
+});
+
 // ───────── 부모 주위 공전(궤도) 모션 + 점선 엣지 ─────────
 // tickFrame 은 engineRunning 일 때만 노드/링크 위치를 갱신하므로,
 // 엔진을 상시 가동해(cooldownTime=Infinity) 매 프레임 좌표를 직접 제어한다.
