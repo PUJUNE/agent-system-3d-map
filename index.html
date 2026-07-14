@@ -6135,8 +6135,10 @@ if (window.matchMedia('(max-width:760px)').matches) hudEl.classList.add('collaps
 
 // ───────── 노드 반발력 · 연결 거리 조절 ─────────
 // charge(반발력) 세기와 link(연결) 거리를 슬라이더로 조절한다.
-// 공전 중 노드는 fx/fy/fz 로 핀되므로, 힘을 바꾼 뒤 buildData() 로 새(핀 없는)
-// 노드를 만들어 재배치해야 값이 실제 레이아웃에 반영된다(필터 변경과 동일 경로).
+// 공전 중 노드는 fx/fy/fz 로 핀되어 있으므로, 힘만 바꾸면 반영되지 않는다.
+// 단, buildData() 로 새 노드를 만들면 위치가 초기화돼 그래프가 '순간이동'하며
+// 끊겨 보인다. 그래서 노드는 그대로 두고(현재 위치·속도 유지) 궤도 핀만 풀어
+// 시뮬레이션이 현 상태에서 새 균형으로 부드럽게 이완하도록 한다.
 const FORCE_DEFAULT = { repel:95, dist:30 };
 const fRepelEl = document.getElementById('fRepel');
 const fDistEl  = document.getElementById('fDist');
@@ -6155,8 +6157,10 @@ function applyForces(resettle){
   const linkForce = Graph.d3Force('link');
   if (linkForce && linkForce.distance) linkForce.distance(dist);
   if (resettle){
-    Graph.graphData(buildData());
-    markResettle();
+    // 기존 노드의 현재 위치는 유지한 채 궤도 핀(fx/fy/fz)만 풀어
+    // 현 상태에서 새 균형으로 부드럽게 이완시킨다(순간이동 방지).
+    Graph.graphData().nodes.forEach(n=>{ n.fx=null; n.fy=null; n.fz=null; });
+    markResettle();               // 공전 정지 → SETTLE_MS 뒤 새 위치 기준 재공전
     Graph.d3ReheatSimulation();
   }
 }
