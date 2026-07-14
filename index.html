@@ -5738,6 +5738,7 @@ const Graph = ForceGraph3D({ rendererConfig:{ antialias:true, alpha:true, powerP
   .backgroundColor('#05070f')
   .nodeVal('val')
   .nodeColor('color')
+  .nodeResolution(48)     // 구 지오메트리 분할 수 (기본 8 → 각져 보임). 높일수록 매끈한 구
   .nodeOpacity(0.92)
   .nodeLabel(null)
   .linkColor(l=>l.color)
