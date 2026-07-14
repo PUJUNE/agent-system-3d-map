@@ -5755,6 +5755,8 @@ const Graph = ForceGraph3D({ rendererConfig:{ antialias:true, alpha:true, powerP
     sprite.fontSize = 180;
     sprite.textHeight = sizes[node.type] || 3;
     sprite.color = node.type==='axis' ? '#93a0bd' : (node.type==='skill' ? node.color : '#ffffff');
+    sprite.strokeWidth = 0.7;          // 글씨 테두리(외곽선) 두께 (실제 lineWidth = strokeWidth*fontSize/10)
+    sprite.strokeColor = '#000000';    // 가느다란 검은 테두리로 배경과 대비 → 가독성 향상
     if (node.type==='root' || node.type==='hangyeol' || node.type==='mgmt') sprite.fontWeight = 'bold';
     sprite.position.y = 4 + Math.cbrt(node.val)*4;
     return sprite;
