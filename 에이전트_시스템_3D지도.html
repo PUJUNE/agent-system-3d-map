@@ -5774,6 +5774,38 @@ window.addEventListener('resize', ()=>{
   Graph.width(window.innerWidth).height(window.innerHeight);
 });
 
+// ───────── 조명 튜닝 — 노드에 입체 음영 부여 ─────────
+// 기본 조명은 앰비언트가 너무 강해(≈π) 구가 평평해 보인다.
+// 앰비언트를 낮춰 명암 대비를 살리고, 주 조명을 비스듬히 옮겨
+// 밝은 면·어두운 면을 만들고, 반대편에 은은한 필 라이트(clone)를 더한다.
+// THREE 생성자가 전역 미노출이므로 필 라이트는 기존 조명의 .clone() 으로 생성.
+function tuneLighting(){
+  const scene = Graph.scene && Graph.scene();
+  if (!scene) return false;
+  let amb=null, dir=null;
+  scene.traverse(o=>{
+    if (o.isAmbientLight) amb=o;
+    else if (o.isDirectionalLight && !o.__fill) dir=o;
+  });
+  if (!amb || !dir) return false;          // 조명이 아직 씬에 없으면 재시도
+  amb.intensity = 1.1;                     // 그림자가 완전히 검지 않을 만큼만
+  dir.intensity = 2.6;                     // 주 조명 강조
+  dir.position.set(0.6, 1, 0.5);           // 우상단-앞쪽에서 비스듬히 → 명암 대비
+  if (!dir.__filled){                       // 반대편 필 라이트 추가(입체감 보강)
+    const fill = dir.clone();
+    fill.__fill = true;
+    fill.intensity = 0.7;
+    fill.position.set(-0.7, -0.4, -0.6);   // 아래-뒤쪽에서 은은하게
+    scene.add(fill);
+    dir.__filled = true;
+  }
+  return true;
+}
+(function retuneLoop(n){                     // 조명은 graphData 시 생성되나, 안전하게 재시도
+  if (tuneLighting() || n<=0) return;
+  requestAnimationFrame(()=>retuneLoop(n-1));
+})(30);
+
 // ───────── 부모 주위 공전(궤도) 모션 + 점선 엣지 ─────────
 // tickFrame 은 engineRunning 일 때만 노드/링크 위치를 갱신하므로,
 // 엔진을 상시 가동해(cooldownTime=Infinity) 매 프레임 좌표를 직접 제어한다.
