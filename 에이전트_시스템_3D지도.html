@@ -28,6 +28,16 @@
 
   .ctrl label { display:block; font-size:12px; color:#c7cddc; cursor:pointer; line-height:1.9; }
   .ctrl input { margin-right:7px; accent-color:#e8735a; }
+  .sliders { margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,.08); }
+  .sliders .srow { margin-bottom:9px; }
+  .sliders .slabel { display:flex; justify-content:space-between; font-size:11.5px;
+    color:#c7cddc; margin-bottom:3px; }
+  .sliders .slabel b { color:#fff; font-weight:600; }
+  .sliders input[type=range] { width:100%; accent-color:#e8735a; cursor:pointer; margin:0; }
+  .sliders .sreset { margin-top:2px; width:100%; background:rgba(255,255,255,.06);
+    color:#c7cddc; border:1px solid rgba(255,255,255,.12); border-radius:8px;
+    padding:5px 0; font-size:11px; cursor:pointer; }
+  .sliders .sreset:hover { background:rgba(255,255,255,.14); }
   .btnrow { margin-top:10px; display:flex; gap:8px; }
   .btnrow button { flex:1; background:rgba(255,255,255,.08); color:#e6e9f0;
     border:1px solid rgba(255,255,255,.15); border-radius:8px; padding:6px 0;
@@ -114,6 +124,17 @@
     <label><input type="checkbox" id="fSkill" checked>스킬 표시</label>
     <label><input type="checkbox" id="fAxis">위키 축 표시</label>
     <label><input type="checkbox" id="fWorkOnly" checked>회사 업무·시스템 관리 스킬만</label>
+  </div>
+  <div class="sliders">
+    <div class="srow">
+      <div class="slabel"><span>노드 반발력</span><b id="vRepel">95</b></div>
+      <input type="range" id="fRepel" min="20" max="300" step="5" value="95">
+    </div>
+    <div class="srow">
+      <div class="slabel"><span>연결 거리</span><b id="vDist">30</b></div>
+      <input type="range" id="fDist" min="10" max="150" step="5" value="30">
+    </div>
+    <button class="sreset" id="btnForceReset">반발력·거리 기본값</button>
   </div>
   <div class="btnrow">
     <button id="btnReset">시점 초기화</button>
@@ -6111,6 +6132,44 @@ if (window.matchMedia('(max-width:760px)').matches) hudEl.classList.add('collaps
     Graph.d3ReheatSimulation();
   });
 });
+
+// ───────── 노드 반발력 · 연결 거리 조절 ─────────
+// charge(반발력) 세기와 link(연결) 거리를 슬라이더로 조절한다.
+// 공전 중 노드는 fx/fy/fz 로 핀되므로, 힘을 바꾼 뒤 buildData() 로 새(핀 없는)
+// 노드를 만들어 재배치해야 값이 실제 레이아웃에 반영된다(필터 변경과 동일 경로).
+const FORCE_DEFAULT = { repel:95, dist:30 };
+const fRepelEl = document.getElementById('fRepel');
+const fDistEl  = document.getElementById('fDist');
+const vRepelEl = document.getElementById('vRepel');
+const vDistEl  = document.getElementById('vDist');
+
+function syncForceLabels(){
+  vRepelEl.textContent = fRepelEl.value;
+  vDistEl.textContent  = fDistEl.value;
+}
+function applyForces(resettle){
+  const rep  = +fRepelEl.value;    // 슬라이더 값 = 반발 세기(클수록 서로 밀어냄)
+  const dist = +fDistEl.value;     // 연결된 노드 사이 목표 거리
+  syncForceLabels();
+  Graph.d3Force('charge').strength(-rep);
+  const linkForce = Graph.d3Force('link');
+  if (linkForce && linkForce.distance) linkForce.distance(dist);
+  if (resettle){
+    Graph.graphData(buildData());
+    markResettle();
+    Graph.d3ReheatSimulation();
+  }
+}
+[fRepelEl, fDistEl].forEach(el=>{
+  el.addEventListener('input',  syncForceLabels);       // 드래그 중: 숫자만 갱신
+  el.addEventListener('change', ()=> applyForces(true)); // 놓으면: 재배치
+});
+document.getElementById('btnForceReset').addEventListener('click', ()=>{
+  fRepelEl.value = FORCE_DEFAULT.repel;
+  fDistEl.value  = FORCE_DEFAULT.dist;
+  applyForces(true);
+});
+applyForces(false);   // 초기 표시값 동기화(현재 레이아웃은 그대로 유지)
 
 function focusNode(node){
   const dist = (node.type==='hangyeol' || node.type==='mgmt') ? 170 : (node.type==='root' ? 420 : 110);
