@@ -10,5 +10,4 @@
 
 ## 구성
 
-- `index.html` — GitHub Pages 배포용 파일 (아래 원본의 사본)
-- `에이전트_시스템_3D지도.html` — 원본 산출물
+- `index.html` — 3D 지도 본체이자 GitHub Pages 배포 진입점. 라이브러리와 데이터가 모두 인라인된 단일 파일임

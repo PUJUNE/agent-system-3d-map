@@ -1,7 +1,7 @@
 ---
 name: 3d-knowledge-graph-html
 description: >-
-  이 리포의 3D 지식그래프 HTML(index.html · 에이전트_시스템_3D지도.html)을 만들거나 수정할 때 사용한다.
+  이 리포의 3D 지식그래프 HTML(index.html)을 만들거나 수정할 때 사용한다.
   3d-force-graph 기반 시각화의 노드/엣지 데이터 편집, 점선 엣지, 부모 주위 공전(궤도) 모션, 노드 드래그,
   카메라 자동 회전, 초기 필터 상태, Playwright 헤드리스 검증까지 이 리포 특유의 구조와 함정을 담고 있다.
   Use when building or editing the 3D knowledge-graph HTML in this repo (3d-force-graph based):
@@ -14,9 +14,9 @@ description: >-
 에이전트 시스템 3D 지도(3d-force-graph 기반)를 만들고 고칠 때의 구조·기법·함정 모음.
 2026-07-10 세션에서 정립됨.
 
-## 대상 파일 & 동기화 규칙 (중요)
-- `index.html` 과 `에이전트_시스템_3D지도.html` 은 **항상 완전히 동일**해야 한다.
-- 한쪽을 편집하면 반드시 `cp index.html 에이전트_시스템_3D지도.html` 로 동기화하고 `diff -q` 로 확인.
+## 대상 파일
+- `index.html` 하나뿐이다. GitHub Pages 진입점이자 산출물 본체이므로 이 파일만 편집한다.
+- 사본을 만들어 병행 관리하지 말 것 — 한쪽만 갱신돼 어긋난다(2026-07-19 중복 정리).
 - `claude log/`, `working log/` 는 `.gitignore` 대상(내부 기록, 공개 리포에 안 올림).
 
 ## 아키텍처 핵심
@@ -104,7 +104,7 @@ import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 - 노드 화면좌표는 `Graph.graph2ScreenCoords(x,y,z)`.
 
 ## 작업 워크플로우
-1. 지정 브랜치에서 작업, `index.html` 편집 → 다른 파일로 `cp` 동기화(`diff -q` 확인).
+1. 지정 브랜치에서 `index.html` 편집.
 2. Playwright 로 헤드리스 검증(에러 0건 + 기능 수치 확인).
 3. 명확한 한국어 커밋 → 푸시.
 4. 사용자가 요청하면 PR 생성 → main 병합. PR 이 이미 병합됐으면 브랜치를 최신 main 에서 재시작.
